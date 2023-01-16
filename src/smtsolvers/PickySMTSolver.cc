@@ -2,28 +2,28 @@
 // Created by prova on 07.02.19.
 //
 
-#include "LookaheadSMTSolver.h"
+#include "PickySMTSolver.h"
 
-LookaheadSMTSolver::LookaheadSMTSolver(SMTConfig& c, THandler& thandler)
+PickySMTSolver::PickySMTSolver(SMTConfig& c, THandler& thandler)
 	: SimpSMTSolver(c, thandler)
     , idx(0)
-	, score(c.lookahead_score_deep() ? (LookaheadScore*)(new LookaheadScoreDeep(assigns, c)) : (LookaheadScore*)(new LookaheadScoreClassic(assigns, c)))
+	, score(c.lookahead_score_deep() ? (PickyScore*)(new PickyScoreDeep(assigns, c)) : (PickyScore*)(new PickyScoreClassic(assigns, c)))
 {}
 
-Var LookaheadSMTSolver::newVar(bool dvar) {
+Var PickySMTSolver::newVar(bool dvar) {
     Var v = SimpSMTSolver::newVar(dvar);
     score->newVar();
     return v;
 }
 
-lbool LookaheadSMTSolver::solve_() {
+lbool PickySMTSolver::solve_() {
     declareVarsToTheories();
 
     double nof_conflicts = restart_first;
 
-    LALoopRes res = LALoopRes::unknown;
+    PLoopRes res = PLoopRes::unknown;
 
-    while (res == LALoopRes::unknown || res == LALoopRes::restart) {
+    while (res == PLoopRes::unknown || res == PLoopRes::restart) {
         //cerr << "; Doing lookahead for " << nof_conflicts << " conflicts\n";
         ConflQuota conflict_quota;
         //if (config.lookahead_restarts()) {
@@ -34,7 +34,7 @@ lbool LookaheadSMTSolver::solve_() {
         nof_conflicts = restartNextLimit(nof_conflicts);
     }
 
-    if (res == LALoopRes::sat) {
+    if (res == PLoopRes::sat) {
         model.growTo(nVars());
         for (unsigned int i = 0; i < dec_vars; i++) {
             Var p = var(trail[i]);
@@ -42,11 +42,11 @@ lbool LookaheadSMTSolver::solve_() {
         }
     }
     switch (res) {
-        case LALoopRes::unknown_final:
+        case PLoopRes::unknown_final:
             return l_Undef;
-        case LALoopRes::sat:
+        case PLoopRes::sat:
             return l_True;
-        case LALoopRes::unsat: {
+        case PLoopRes::unsat: {
             ok = false;
             return l_False;
         }
@@ -67,7 +67,7 @@ lbool LookaheadSMTSolver::solve_() {
 // new conflicts or propagations are available in theory or in unit propagation
 //
 
-lbool LookaheadSMTSolver::laPropagateWrapper() {
+lbool PickySMTSolver::laPropagateWrapper() {
     CRef cr;
     bool diff;
     do {
@@ -135,12 +135,12 @@ lbool LookaheadSMTSolver::laPropagateWrapper() {
  * In case (ii), either @return pathbuild_tlunsat or @return pathbuild_unsat
  *
  */
-LookaheadSMTSolver::PathBuildResult LookaheadSMTSolver::setSolverToNode(LANode const & n) {
+PickySMTSolver::PathBuildResult PickySMTSolver::setSolverToNode(PNode const & n) {
     cancelUntil(0);
 
     vec<Lit> path;
-    LANode const * curr = &n;
-    LANode const * parent = n.p;
+    PNode const * curr = &n;
+    PNode const * parent = n.p;
     // Collect the truth assignment.
     while (parent != curr) {
         path.push(curr->l);
@@ -188,7 +188,7 @@ LookaheadSMTSolver::PathBuildResult LookaheadSMTSolver::setSolverToNode(LANode c
     return PathBuildResult::pathbuild_success;
 }
 
-LookaheadSMTSolver::laresult LookaheadSMTSolver::expandTree(LANode & n, std::unique_ptr<LANode> c1, std::unique_ptr<LANode> c2)
+PickySMTSolver::laresult PickySMTSolver::expandTree(PNode & n, std::unique_ptr<PNode> c1, std::unique_ptr<PNode> c2)
 {
     assert(c1);
     assert(c2);
@@ -213,15 +213,16 @@ LookaheadSMTSolver::laresult LookaheadSMTSolver::expandTree(LANode & n, std::uni
     return laresult::la_ok;
 }
 
-LookaheadSMTSolver::LALoopRes LookaheadSMTSolver::solveLookahead() {
+PickySMTSolver::PLoopRes PickySMTSolver::solveLookahead() {
     struct PlainBuildConfig {
-        bool stopCondition(LANode &, int) { return false; }
-        LALoopRes exitState() const { return LALoopRes::unknown; }
+        bool stopCondition(PNode &, int) { return false; }
+        PLoopRes exitState() const { return PLoopRes::unknown; }
     };
-    return buildAndTraverse<LANode, PlainBuildConfig>(PlainBuildConfig()).first;
+    return buildAndTraverse<PNode, PlainBuildConfig>(PlainBuildConfig()).first;
 };
 
-std::pair<LookaheadSMTSolver::laresult,Lit> LookaheadSMTSolver::lookaheadLoop() {
+std::pair<PickySMTSolver::laresult,Lit> PickySMTSolver::lookaheadLoop() {
+    int X = 1;
     ConflQuota prev = confl_quota;
     confl_quota = ConflQuota(); // Unlimited;
     if (laPropagateWrapper() == l_False) {
@@ -242,7 +243,17 @@ std::pair<LookaheadSMTSolver::laresult,Lit> LookaheadSMTSolver::lookaheadLoop() 
 #ifdef LADEBUG
     printf("Starting lookahead loop with %d vars\n", nVars());
 #endif
-    for (Var v(idx % nVars()); !score->isAlreadyChecked(v); v = Var((idx + (++i)) % nVars()))
+//    order_heap.removeMin();
+    int k = 0 ,j = 0;
+    while(k < order_heap.size() && j < X ){
+        if(value(order_heap[k]) == l_Undef){
+            j++;
+            k++;
+        } else {
+            order_heap.remove(order_heap[k]);
+        }
+    }
+    for (Var v(idx % nVars()); !score->isAlreadyChecked(v); v = order_heap[(idx + (++i)) % X])
     {
         if (!decision[v]) {
             score->setChecked(v);
@@ -346,10 +357,15 @@ std::pair<LookaheadSMTSolver::laresult,Lit> LookaheadSMTSolver::lookaheadLoop() 
            printf("Updating var %d to (%d, %d)\n", v, p0, p1);
 #endif
             score->setLAValue(v, p0, p1);
-            score->updateLABest(v);
+            score->updatePBest(v);
         }
     }
     Lit best = score->getBest();
+//    for(int i = 0; i < X; i++){
+//        if (var(best) == order_heap[i]){
+//            order_heap.remove(order_heap[i]);
+//        }
+//    }
     if (static_cast<unsigned int>(trail.size()) == dec_vars && best == lit_Undef) {
 #ifdef LADEBUG
         printf("All variables are already set, so we have nothing to branch on and this is a SAT answer\n");

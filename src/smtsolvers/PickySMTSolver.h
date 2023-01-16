@@ -2,16 +2,16 @@
 // Created by prova on 07.02.19.
 //
 
-#ifndef OPENSMT_LOOKAHEADSMTSOLVER_H
-#define OPENSMT_LOOKAHEADSMTSOLVER_H
+#ifndef OPENSMT_PICKYSMTSOLVER_H
+#define OPENSMT_PICKYSMTSOLVER_H
 
 #include "SimpSMTSolver.h"
-#include "LAScore.h"
+#include "PScore.h"
 
 #include <memory>
 #include <unistd.h>
 
-class LookaheadSMTSolver : public SimpSMTSolver {
+class PickySMTSolver : public SimpSMTSolver {
 protected:
     ConflQuota confl_quota;
     int idx;
@@ -20,17 +20,17 @@ protected:
     // Data type for exact value array
     static inline int min(int i, int j) { return i < j ? i : j; }
     static inline int max(int i, int j) { return i > j ? i : j; }
-    class LANode {
+    class PNode {
     public:
         // The children
-        std::unique_ptr<LANode> c1;
-        std::unique_ptr<LANode> c2;
-        LANode* p;
-        virtual LANode * getParent() { return p; }
+        std::unique_ptr<PNode> c1;
+        std::unique_ptr<PNode> c2;
+        PNode* p;
+        virtual PNode * getParent() { return p; }
         Lit l;
         int d;
-        LANode() : l(lit_Undef), d(0) {}
-        virtual ~LANode() = default;
+        PNode() : l(lit_Undef), d(0) {}
+        virtual ~PNode() = default;
         virtual void print_local() const {
             for (int i = 0; i < d; i++)
                 dprintf(STDERR_FILENO, " ");
@@ -58,7 +58,7 @@ protected:
 
 protected:
     // The result from the lookahead loop
-    enum class LALoopRes {
+    enum class PLoopRes {
         sat,
         unsat,
         unknown,
@@ -76,9 +76,9 @@ protected:
 
     template<typename Node, typename BuildConfig>
 
-    std::pair<LALoopRes, std::unique_ptr<Node>> buildAndTraverse(BuildConfig &&);
+    std::pair<PLoopRes, std::unique_ptr<Node>> buildAndTraverse(BuildConfig &&);
 
-    virtual LALoopRes solveLookahead();
+    virtual PLoopRes solveLookahead();
     std::pair<laresult,Lit> lookaheadLoop();
     lbool solve_() override; // Does not change the formula
 
@@ -89,12 +89,12 @@ protected:
         pathbuild_restart
     };
 
-    PathBuildResult setSolverToNode(LANode const &);                                         // Set solver dl stack according to the path from root to n
-    laresult expandTree(LANode & n, std::unique_ptr<LANode> c1, std::unique_ptr<LANode> c2); // Do lookahead.  On success write the new children to c1 and c2
-    std::unique_ptr<LookaheadScore> score;
+    PathBuildResult setSolverToNode(PNode const &);                                         // Set solver dl stack according to the path from root to n
+    laresult expandTree(PNode & n, std::unique_ptr<PNode> c1, std::unique_ptr<PNode> c2); // Do lookahead.  On success write the new children to c1 and c2
+    std::unique_ptr<PickyScore> score;
     bool okToPartition(Var v) const { return theory_handler.getTheory().okToPartition(theory_handler.varToTerm(v)); };
 public:
-    LookaheadSMTSolver(SMTConfig&, THandler&);
+    PickySMTSolver(SMTConfig&, THandler&);
     Var newVar(bool dvar) override;
 };
 
@@ -103,8 +103,8 @@ public:
 // children has been shown unsatisfiable either directly or with a
 // backjump.
 template<typename Node, typename BuildConfig>
-std::pair<LookaheadSMTSolver::LALoopRes, std::unique_ptr<Node>>
-LookaheadSMTSolver::buildAndTraverse(BuildConfig && buildConfig) {
+std::pair<PickySMTSolver::PLoopRes, std::unique_ptr<Node>>
+PickySMTSolver::buildAndTraverse(BuildConfig && buildConfig) {
     score->updateRound();
     vec<Node *> queue;
     auto * root_raw = new Node();
@@ -119,9 +119,9 @@ LookaheadSMTSolver::buildAndTraverse(BuildConfig && buildConfig) {
 
         switch (setSolverToNode(*n)) {
             case PathBuildResult::pathbuild_tlunsat:
-                return { LALoopRes::unsat, nullptr };
+                return { PLoopRes::unsat, nullptr };
             case PathBuildResult::pathbuild_restart:
-                return { LALoopRes::restart, nullptr };
+                return { PLoopRes::restart, nullptr };
             case PathBuildResult::pathbuild_unsat: {
                 // Reinsert the parent to the queue
                 assert(n != root_raw); // Unsatisfiability in root should be tlunsat
@@ -154,14 +154,14 @@ LookaheadSMTSolver::buildAndTraverse(BuildConfig && buildConfig) {
 
         switch (expandTree(*n, std::move(c1), std::move(c2))) {
             case laresult::la_tl_unsat:
-                return { LALoopRes::unsat, nullptr };
+                return { PLoopRes::unsat, nullptr };
             case laresult::la_restart:
-                return { LALoopRes::restart, nullptr };
+                return { PLoopRes::restart, nullptr };
             case laresult::la_unsat:
                 queue.push(n);
                 continue;
             case laresult::la_sat:
-                return { LALoopRes::sat, nullptr };
+                return { PLoopRes::sat, nullptr };
             case laresult::la_ok:
                 ;
         }
@@ -169,11 +169,11 @@ LookaheadSMTSolver::buildAndTraverse(BuildConfig && buildConfig) {
         queue.push(c1_raw);
         queue.push(c2_raw);
     }
-#ifdef LADEBUG
+#ifdef PDEBUG
     root->print();
 #endif
     return { buildConfig.exitState(), std::move(root) };
 }
 
 
-#endif //OPENSMT_LOOKAHEADSMTSOLVER_H
+#endif //OPENSMT_PICKYSMTSOLVER_H

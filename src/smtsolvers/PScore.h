@@ -2,8 +2,8 @@
 // Created by prova on 13.08.19.
 //
 
-#ifndef OPENSMT_LASCORE_H
-#define OPENSMT_LASCORE_H
+#ifndef OPENSMT_PSCORE_H
+#define OPENSMT_PSCORE_H
 
 #include <SolverTypes.h>
 #include <SMTConfig.h>
@@ -13,10 +13,10 @@
 #include <string>
 #include <sstream>
 
-class LookaheadSMTSolver;
+class PickySMTSolver;
 
 template<class EV>
-class LABestLitBuf {
+class PBestLitBuf {
 private:
     int size;
     using EVLitPair = opensmt::pair<EV, Lit>;
@@ -44,7 +44,7 @@ private:
     double rnd_seed;
 public:
     // Use 0 for random seed to disable randomization
-    LABestLitBuf(int sz, const vec<lbool> &assigns, bool randomize, double rnd_seed)
+    PBestLitBuf(int sz, const vec<lbool> &assigns, bool randomize, double rnd_seed)
             : size(sz), assigns(assigns), randomize(randomize), rnd_seed(rnd_seed)
     {
         for (int i = 0; i < size; i++)
@@ -103,7 +103,7 @@ public:
     }
 };
 
-class LookaheadScore {
+class PickyScore {
 protected:
 
     const vec<lbool>& assigns;
@@ -113,14 +113,14 @@ protected:
     lbool value(Lit p) const { return assigns[var(p)] ^ sign(p); }
 public:
     void updateRound() { latest_round++; }
-    explicit LookaheadScore(const vec<lbool>& assigns) : assigns(assigns), latest_round(0) {}
-    virtual ~LookaheadScore() = default;
+    explicit PickyScore(const vec<lbool>& assigns) : assigns(assigns), latest_round(0) {}
+    virtual ~PickyScore() = default;
     virtual void setLAValue(Var v, int p0, int p1) = 0;
 
-    virtual double getSolverScore(const LookaheadSMTSolver *solver) = 0;
-    virtual void updateSolverScore(double &ss, const LookaheadSMTSolver *solver) = 0;
+    virtual double getSolverScore(const PickySMTSolver *solver) = 0;
+    virtual void updateSolverScore(double &ss, const PickySMTSolver *solver) = 0;
 
-    virtual void updateLABest(Var v) =  0;
+    virtual void updatePBest(Var v) =  0;
     virtual void newVar() = 0;
     virtual Lit  getBest() = 0;
     virtual void setChecked(Var v) = 0;
@@ -136,7 +136,7 @@ public:
 //    - the number of free variables in clause c after ss has been run
 //      until unit propagation closure, if c does not contain a true literal, or
 //    - 0, if c contains a true literal
-class LookaheadScoreDeep : public LookaheadScore {
+class PickyScoreDeep : public PickyScore {
 public:
     class DoubleVal {
         int round;
@@ -163,21 +163,21 @@ public:
     };
 private:
     int base_score_round;
-    LABestLitBuf<DoubleVal> buf_LABests;
+    PBestLitBuf<DoubleVal> buf_PBests;
     vec<DoubleVal> LAexacts;
     double cached_score;
-    double computeScoreFromClauses(const vec<CRef>& clauses, const LookaheadSMTSolver *solver);
+    double computeScoreFromClauses(const vec<CRef>& clauses, const PickySMTSolver *solver);
     bool current(const DoubleVal &e) const { return latest_round == static_cast<unsigned int>(e.getRound()); }
 public:
-    explicit LookaheadScoreDeep(const vec<lbool> &assigns, const SMTConfig &c)
-            : LookaheadScore(assigns), base_score_round(-1)
-            , buf_LABests(c.randomize_lookahead_bufsz(), assigns, c.randomize_lookahead(), c.getRandomSeed()) {std::cerr << "; Deep score\n";}
+    explicit PickyScoreDeep(const vec<lbool> &assigns, const SMTConfig &c)
+            : PickyScore(assigns), base_score_round(-1)
+            , buf_PBests(c.randomize_lookahead_bufsz(), assigns, c.randomize_lookahead(), c.getRandomSeed()) {std::cerr << "; Deep score\n";}
     void setLAValue(Var v, int p0, int p1) override;
 
-    double getSolverScore(const LookaheadSMTSolver *solver) override;
-    void updateSolverScore(double &ss, const LookaheadSMTSolver *solver) override;
+    double getSolverScore(const PickySMTSolver *solver) override;
+    void updateSolverScore(double &ss, const PickySMTSolver *solver) override;
 
-    void updateLABest(Var v) override;
+    void updatePBest(Var v) override;
     void newVar() override;
     Lit  getBest() override;
     void setChecked(Var v) override;
@@ -186,8 +186,8 @@ public:
 };
 
 
-class LookaheadScoreClassic : public LookaheadScore {
-    friend LookaheadSMTSolver;
+class PickyScoreClassic : public PickyScore {
+    friend PickySMTSolver;
 private:
     // -----------------------------------------------------------------------------------------
     // Data type for upper bound array
@@ -294,17 +294,17 @@ private:
 
     vec<UBVal> LAupperbounds;    // The current upper bounds
     vec<ExVal> LAexacts;         // The current exact values
-    LABestLitBuf<ExVal> buf_LABests;
+    PBestLitBuf<ExVal> buf_PBests;
     static const UBel UBel_Undef;
 
 public:
-    explicit LookaheadScoreClassic(const vec<lbool> &assigns, const SMTConfig &c)
-            : LookaheadScore(assigns), buf_LABests(c.randomize_lookahead_bufsz(), assigns, c.randomize_lookahead(), c.getRandomSeed())
+    explicit PickyScoreClassic(const vec<lbool> &assigns, const SMTConfig &c)
+            : PickyScore(assigns), buf_PBests(c.randomize_lookahead_bufsz(), assigns, c.randomize_lookahead(), c.getRandomSeed())
               { std::cerr << "; Classic score\n"; }
 
     void newVar() override;
 
-    void updateLABest(Var v) override;
+    void updatePBest(Var v) override;
 
     Lit getBest() override;
 
@@ -316,8 +316,8 @@ public:
     void updateLAUB(Lit l, int props);                               // Check the lookahead upper bound and update it if necessary
     void setLAValue(Var v, int pprops, int nprops) override;         // Set the exact la value
 
-    double getSolverScore(const LookaheadSMTSolver *solver) override;
+    double getSolverScore(const PickySMTSolver *solver) override;
 
-    void updateSolverScore(double &ss, const LookaheadSMTSolver *solver) override;
+    void updateSolverScore(double &ss, const PickySMTSolver *solver) override;
 };
-#endif //OPENSMT_LASCORE_H
+#endif //OPENSMT_PSCORE_H
