@@ -91,6 +91,7 @@ protected:
 
     PathBuildResult setSolverToNode(PNode const &);                                         // Set solver dl stack according to the path from root to n
     laresult expandTree(PNode & n, std::unique_ptr<PNode> c1, std::unique_ptr<PNode> c2); // Do lookahead.  On success write the new children to c1 and c2
+    void rebuildOrderHeap();
     std::unique_ptr<PickyScore> score;
     bool okToPartition(Var v) const { return theory_handler.getTheory().okToPartition(theory_handler.varToTerm(v)); };
 public:
