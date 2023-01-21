@@ -185,8 +185,20 @@ PickySMTSolver::PathBuildResult PickySMTSolver::setSolverToNode(PNode const & n)
             }
         }
     }
+    rebuildOrderHeap();
     return PathBuildResult::pathbuild_success;
 }
+
+
+void PickySMTSolver::rebuildOrderHeap()
+{
+    vec<Var> vs;
+    for (Var v = 0; v < nVars(); v++)
+        if (decision[v] && value(v) == l_Undef)
+            vs.push(v);
+    order_heap.build(vs);
+}
+
 
 PickySMTSolver::laresult PickySMTSolver::expandTree(PNode & n, std::unique_ptr<PNode> c1, std::unique_ptr<PNode> c2)
 {
