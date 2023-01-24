@@ -3,6 +3,7 @@
 //
 
 #include "PickySMTSolver.h"
+#include "Proof.h"
 
 PickySMTSolver::PickySMTSolver(SMTConfig& c, THandler& thandler)
 	: SimpSMTSolver(c, thandler)
@@ -91,9 +92,16 @@ lbool PickySMTSolver::laPropagateWrapper() {
             cancelUntil(out_btlevel);
             assert(value(out_learnt[0]) == l_Undef);
             if (out_learnt.size() == 1) {
-                uncheckedEnqueue(out_learnt[0]);
+                CRef unitClause = ca.alloc(vec<Lit>{out_learnt[0]});
+                if (logsProofForInterpolation()) {
+                    proof->endChain(unitClause);
+                }
+                uncheckedEnqueue(out_learnt[0], unitClause);
             } else {
                 CRef crd = ca.alloc(out_learnt, {true, computeGlue(out_learnt)});
+                if (logsProofForInterpolation()) {
+                    proof->endChain(crd);
+                }
                 learnts.push(crd);
                 attachClause(crd);
                 uncheckedEnqueue(out_learnt[0], crd);
@@ -381,8 +389,6 @@ std::pair<PickySMTSolver::laresult,Lit> PickySMTSolver::lookaheadLoop() {
             }
         }
         best = score->getBest();
-//        printf("Best: %d \n", var(best));
-//        printf("Decision level: %d \n", decisionLevel());
     //    for(int i = 0; i < X; i++){
     //        if (var(best) == order_heap[i]){
     //            order_heap.remove(order_heap[i]);
