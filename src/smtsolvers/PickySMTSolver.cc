@@ -18,11 +18,18 @@ Var PickySMTSolver::newVar(bool dvar) {
 }
 
 lbool PickySMTSolver::solve_() {
+    for (Lit l : this->assumptions) {
+        this->addVar_(var(l));
+    }
+
     declareVarsToTheories();
 
     double nof_conflicts = restart_first;
-
+    crossed_assumptions = 0;
     PLoopRes res = PLoopRes::unknown;
+
+    model.clear();
+    conflict.clear();
 
     while (res == PLoopRes::unknown || res == PLoopRes::restart) {
         //cerr << "; Doing lookahead for " << nof_conflicts << " conflicts\n";
@@ -160,6 +167,11 @@ PickySMTSolver::PathBuildResult PickySMTSolver::setSolverToNode(PNode const & n)
     int i = path.size() - 1;
     if(path.size() <= decisionLevel()) {
         cancelUntil(0);
+        if(path.size() >= assumptions.size()){
+            crossed_assumptions = assumptions.size();
+        } else {
+            crossed_assumptions = path.size();
+        }
     } else {
         i = path.size() - decisionLevel() - 1;
     }
@@ -412,4 +424,36 @@ std::pair<PickySMTSolver::laresult,Lit> PickySMTSolver::lookaheadLoop() {
 //    idx = (idx + i) % nVars();
     if (!okToPartition(var(best))) { unadvised_splits++; }
     return {laresult::la_ok, best};
+}
+
+
+
+// Revert to the state at given level (keeping all assignment at 'level' but not beyond).
+//
+void PickySMTSolver::cancelUntil(int level)
+{
+    if (decisionLevel() > level)
+    {
+        if (trail.size() > longestTrail) {
+            for (auto p : trail) {
+                savedPolarity[var(p)] = not sign(p);
+            }
+            longestTrail = trail.size();
+        }
+        for (int c = trail.size()-1; c >= trail_lim[level]; c--)
+        {
+            Var      x  = var(trail[c]);
+#ifdef PEDANTIC_DEBUG
+            assert(assigns[x] != l_Undef);
+#endif
+            assigns [x] = l_Undef;
+            insertVarOrder(x);
+        }
+        qhead = trail_lim[level];
+        trail.shrink(trail.size() - trail_lim[level]);
+        trail_lim.shrink(trail_lim.size() - level);
+        crossed_assumptions = min(crossed_assumptions, level);
+        //if ( first_model_found )
+        theory_handler.backtrack(trail.size());
+    }
 }
